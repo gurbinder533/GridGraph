@@ -16,9 +16,10 @@ Copyright (c) 2014-2015 Xiaowei Zhu, Tsinghua University
 
 #include "core/graph.hpp"
 
+const uint32_t infinity = std::numeric_limits<uint32_t>::max()/4;
 int main(int argc, char ** argv) {
-	if (argc<3) {
-		fprintf(stderr, "usage: bfs [path] [start vertex id] [memory budget in GB]\n");
+	if (argc<2) {
+		fprintf(stderr, "usage: bfs_dist [path] [start vertex id] [memory budget in GB]\n");
 		exit(-1);
 	}
 	std::string path = argv[1];
@@ -29,41 +30,29 @@ int main(int argc, char ** argv) {
 	graph.set_memory_bytes(memory_bytes);
 	Bitmap * active_in = graph.alloc_bitmap();
 	Bitmap * active_out = graph.alloc_bitmap();
-	BigVector<VertexId> parent(graph.path+"/parent", graph.vertices);
+	BigVector<uint32_t> current_dist(graph.path+"/current_dist", graph.vertices);
 	graph.set_vertex_data_bytes( graph.vertices * sizeof(VertexId) );
 
-	active_out->clear();
-	active_out->set_bit(start_vid);
-  //XXX HACK
-  //active_out->fill();
+	active_out->fill();
+	VertexId active_vertices = graph.stream_vertices<VertexId>([&](VertexId i){
+		current_dist[i] =  infinity;
+		return 1;
+	});
 
-	parent.fill(-1);
-  printf("start vertex : %d\n", start_vid);
-  printf("vertices : %d\n", graph.vertices);
-	parent[start_vid] = start_vid;
-	VertexId active_vertices = 1;
+  current_dist[start_vid] = 0;
 
 	double start_time = get_time();
 	int iteration = 0;
 	while (active_vertices!=0) {
-    printf("iteration : %d\n",iteration);
 		iteration++;
 		printf("%7d: %d\n", iteration, active_vertices);
 		std::swap(active_in, active_out);
 		active_out->clear();
-#if 0
-    graph.stream_edges<VertexId>([&](Edge & e){
-        //printf("BEFORE : %d-->%d\n", e.source, e.target);
-        printf("%d %d\n", e.source, e.target);
-        return 0;
-    }, active_in);
+		graph.hint(current_dist);
 
-    return 0;
-#endif
-		graph.hint(parent);
 		active_vertices = graph.stream_edges<VertexId>([&](Edge & e){
-			if (parent[e.target]==-1) {
-				if (cas(&parent[e.target], (long int)(-1), e.source)) {
+			if (current_dist[e.source]<current_dist[e.target]) {
+				if (write_min(&current_dist[e.target], (1 + current_dist[e.source]))) {
 					active_out->set_bit(e.target);
 					return 1;
 				}
@@ -73,13 +62,22 @@ int main(int argc, char ** argv) {
 	}
 	double end_time = get_time();
 
-	int discovered_vertices = graph.stream_vertices<VertexId>([&](VertexId i){
-      //if(parent[i] != -1){
-        //printf("%d : %d\n", i, parent[i]);
-      //}
-      return parent[i]!=-1;
-	});
-	printf("discovered %d vertices from %d in %.2f seconds.\n", discovered_vertices, start_vid, end_time - start_time);
+
+  //VERIFICATION
+	graph.stream_vertices<VertexId>([&](VertexId i){
+    printf("%d %d\n", i, current_dist[i]);
+		return 1;
+  });
+	//BigVector<VertexId> current_dist_stat(graph.path+"/current_dist_stat", graph.vertices);
+	//current_dist_stat.fill(0);
+	//graph.stream_vertices<VertexId>([&](VertexId i){
+		//write_add(&current_dist_stat[current_dist[i]], 1);
+		//return 1;
+	//});
+	//VertexId components = graph.stream_vertices<VertexId>([&](VertexId i){
+		//return current_dist_stat[i]!=0;
+	//});
+	//printf("%d components found in %.2f seconds\n", components, end_time - start_time);
 
 	return 0;
 }

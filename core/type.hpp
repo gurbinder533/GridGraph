@@ -17,9 +17,14 @@ Copyright (c) 2014-2015 Xiaowei Zhu, Tsinghua University
 #ifndef TYPE_H
 #define TYPE_H
 
-typedef int VertexId;
+//typedef int VertexId;
+//typedef long EdgeId;
+//typedef float Weight;
+
+typedef long int VertexId;
 typedef long EdgeId;
 typedef float Weight;
+
 
 struct Edge {
 	VertexId source;
